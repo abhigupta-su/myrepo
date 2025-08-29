@@ -1,4 +1,4 @@
-                                     [Module 1 & 2]
+                                                                            [Linux Administration and Networking]
 
 1. yum configuration for package installation 
 
