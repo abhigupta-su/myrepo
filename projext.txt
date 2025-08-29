@@ -1,0 +1,492 @@
+                                     [Module 1 & 2]
+
+1. yum configuration for package installation 
+
+-> mount /dev/cdrom /mnt
+-> mv /etc/yum.repos.d/* /root/"directory name"
+-> vim /etc/yum.repos.d/filename.repo            [.repo necessary]
+
+[repo 1]
+name=appstream
+baseurl=/mnt/AppStream
+gpgcheck=0
+enabled=1
+
+[repo 2]
+name=baseos
+baseurl=/mnt/BaseOS
+gpgcheck=0
+enabled=1
+
+-> run command 'blkid'
+-> edit for permanant mounting in /etc/fstab
+
+UUID=2023-04-17-08-37-07-00     /mnt     iso9660     defaults     0     0
+
+--------------------------------------------------------------------------------------------------------
+2. apache and nginx installation and configuration for website hosting
+
+                                    [apache]
+
+-> yum install httpd
+-> yum install mod_ssl
+-> openssl req -newkey rsa:2048 -nodes -keyout /etc/pki/tls/private/web.com.key -x509 -days 365 -out /etc/pki/tls/certs/web.com.crt
+
+-> vim /etc/httpd/conf.d/path.conf
+
+<VirtualHost *:80>
+
+servername www.web.com
+Redirect "/" "https://www.web.com"
+
+</VirtualHost>
+
+<VirtualHost *:443>
+ServerAdmin admin@web.com
+DocumentRoot /var/www/html
+ServerName www.web.com
+
+SSLEngine on
+SSLCertificateFile /etc/pki/tls/certs/web.com.crt
+SSLCertificateKeyFile /etc/pki/tls/private/web.com.key
+
+ErrorLog logs/web.com_ssl-error.log
+CustomLog logs/web.com_ssl-access.log combined
+</VirtualHost>
+
+<Directory /var/www/html>
+Require all granted
+</Directory>
+
+-> systemctl start httpd
+-> systemctl stop firewalld
+-> setenforce 0
+-> vim /var/www/html/index.html (by default) or something else
+
+"enter text"
+
+-> edit zone file /etc/named.conf
+
+zone"web.com"{
+                file "host";
+                type master;
+              };
+
+-> vim /var/named/host
+
+        IN      NS      www.web.com.
+www     IN      A       "server ip"
+
+-> systemctl restart named
+-> edit /etc/resolv.conf
+
+"server ip"
+
+-> curl www.web.com
+
+                                         [nginx]                                           
+
+-> yum install nginx
+-> edit configuration file for changing port /etc/nginx/nginx.conf
+
+server {
+        listen       8080 default_server;
+        listen       [::]:8080 default_server;
+}
+
+-> vim /etc/nginx/conf.d/cloud.conf
+
+server {
+        listen 8080;
+        listen [::]:8080;
+
+        index index.html index.htm index.nginx-debian.html;
+
+        server_name abhi.info www.abhi.info;
+
+        location / {
+        root /var/abhi;
+}
+
+access_log /var/log/nginx/abhi.info.access.log;
+error_log /var/log/nginx/abhi.info.error.log;
+}
+
+-> systemctl start nginx
+-> systemctl stop firewalld
+-> setenforce 0
+-> vim /var/abhi/index.html
+
+"enter text"
+
+-> define zone in /etc/named.conf
+
+zone"abhi.info"{
+                file "host1";
+                type master;
+              };
+
+-> vim /var/named/host1
+
+        IN      NS      www.abhi.info.
+www     IN      A       "server ip"
+
+-> systemctl restart named
+-> edit /etc/resolv.conf
+
+"server ip"
+
+-> curl www.abhi.info:8080
+
+--------------------------------------------------------------------------------------------------------
+3. bind server installation for dns configuration
+
+-> yum install bind
+-> systemctl start named
+-> vim /etc/named.conf
+
+options{
+         directory "/var/named";
+};
+
+zone"ipl.com"{
+                file "ipl-forward";
+                type master;
+              };
+
+-> cp -a /var/named/named.localhost /var/named/ipl-forward
+-> vim /var/named/ipl-forward
+
+        IN      NS      www.ipl.com.
+www     IN      A       "server ip"
+
+-> systemctl restart named
+-> systemctl stop firewalld
+-> setenforce 0
+-> edit /etc/resolv.conf
+
+"server ip"
+
+-> yum install bind-utils
+-> nslookup "domain name or ip address" for authorative answer
+
+--------------------------------------------------------------------------------------------------------
+4. nfs(network file system) server installation and configuration for file sharing across the network (lvm type) when client is linux
+                                       
+                                      [server-side]
+
+-> yum install nfs-utils
+-> systemctl start nfs-server
+-> fdisk /dev/nvme0n2p1
+-> pvcreate /dev/nvme0n2p1
+-> vgcreate test /dev/nvme0n2p1
+-> lvcreate -n logical -L 1G test                                       
+-> mkfs.ext4 /dev/test/logical
+-> mkdir /new
+-> mount /dev/test/logical /new
+-> vim /etc/exports
+
+/new *(rw,sync,no_root_squash)
+                                   
+                                      [client-side]
+                                       
+-> yum install nfs-utils 
+-> systemctl start nfs-server                                   
+-> showmount -e "server ip"
+-> mkdir /client
+-> mount "server ip":/new /client
+-> edit /etc/fstab
+
+"server ip":/new     /client     nfs     defaults     0     0    
+
+--------------------------------------------------------------------------------------------------------
+5. samba server installation and configuration for windows file sharing when client is windows
+
+                                      [server-side]   
+
+-> yum install samba
+-> systemctl start smb
+-> groupadd marketing
+-> mkdir /smbshare
+-> chgrp marketing /smbshare
+-> chmod 2775 /smbshare
+-> edit /etc/samba/smb.conf
+
+[data]
+        comment = for marketing work
+        path = /smbshare
+        write list = @marketing
+
+-> systemctl restart smb
+-> systemctl stop firewalld
+-> setenforce 0
+-> useradd -s /sbin/nologin -G marketing project
+-> smbpasswd -a project
+
+                                      [client-side]
+
+-> run command windows+r
+-> type \\"server ip"
+-> type username and password created on server-side
+
+--------------------------------------------------------------------------------------------------------
+6. nis(network information service) server installation and configuration for centralized user authentication
+
+                                      [server-side]
+
+-> yum install ypserv rpcbind
+-> ypdomainname example.com
+-> echo "NISDOMAIN NAME=example.com" >> /etc/sysconfig/network
+-> vim /var/yp/securenets
+
+255.0.0.0        127.0.0.0
+255.255.255.0    192.168.1.0
+
+-> edit /etc/hosts
+
+"server ip"    servera.example.com
+"client ip"    serverb.example.com
+
+-> setenforce 0
+-> useradd first
+-> passwd first
+-> systemctl enable --now rpcbind ypserv ypxfrd yppasswdd nis-domainname
+-> run /usr/lib64/yp/ypinit -m
+                                       
+                                       [client-side]
+
+-> yum install ypbind rpcbind oddjob-mkhomedir
+-> ypdomainname example.com
+-> echo "NISDOMAIN NAME=example.com" >> /etc/sysconfig/network
+-> vim /etc/yp.conf
+
+domain example.com server servera.example.com
+
+-> vim /etc/hosts
+
+"server ip"    servera.example.com
+"client ip"    serverb.example.com
+
+-> ping servera.example.com
+-> ping serverb.example.com
+-> authselect select nis --force
+-> systemctl enable --now rpcbind ypbind nis-domainname oddjobd
+-> su - first
+
+--------------------------------------------------------------------------------------------------------
+7. autofs installation and configuration for automatic mounting of nfs(network file system)
+
+                                        [server-side]
+
+-> yum install nfs-utils
+-> systemctl start nfs-server
+-> vim /etc/exports
+
+/new "server ip"(rw,sync)
+                                        [client-side]
+
+-> yum install autofs
+-> start autofs service (systemctl start autofs)
+-> edit /etc/auto.master
+
+/myshare /etc/auto.misc or something else --timeout=10
+
+-> edit /etc/auto.misc
+
+share          -fstype=nfs             "server ip":/new
+
+-> cd /myshare/share
+-> df -h
+
+--------------------------------------------------------------------------------------------------------
+8. postfix server installation and configuration for mailing service across multiple networks 
+
+                                        [server1]
+
+-> yum install postfix
+-> yum install mailx
+-> yum install telnet
+-> systemctl start postfix
+-> edit /etc/postfix/main.cf
+
+myhostname = mail.land.com
+#myhostname = virtual.domain.tld
+mydomain = land.com
+myorigin = $mydomain
+inet_interfaces = all
+#inet_interfaces = localhost
+#mydestination = $myhostname, localhost.$mydomain, localhost
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain,
+mynetworks = 168.100.189.0/28, 127.0.0.0/8, 192.168.1.0/24
+
+-> systemctl restart postfix
+-> systemctl stop firewalld
+-> setenforce 0
+-> edit /etc/named.conf
+
+zone"escape.com"{
+                file "escape-forward";
+                type master;
+              };
+
+-> edit /var/named/escape-forward
+
+        IN      NS      ns1.escape.com.
+        IN      MX      10    mail.escape.com.
+mail    IN      A       ""
+ns1     IN      A       10.0.0.1
+
+-> systemctl restart named
+-> edit /etc/resolv.conf
+
+"server ip"
+
+-> useradd one
+-> su - one
+-> run command 'mail'
+
+                                        [server2]
+                                          
+-> yum install postfix
+-> yum install mailx
+-> systamctl start postfix
+-> edit /etc/postfix/main.cf
+
+myhostname = mail.escape.com
+#myhostname = virtual.domain.tld
+mydomain = escape.com
+myorigin = $mydomain
+inet_interfaces = all
+#inet_interfaces = localhost
+#mydestination = $myhostname, localhost.$mydomain, localhost
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain,
+
+-> systemctl restart postfix
+-> systemctl stop firewalld
+-> setenforce 0
+-> useradd add
+-> edit /etc/aliases
+
+# Person who should get root's mail
+#root:          marc
+hello:          add
+
+-> newaliases
+-> su - add
+-> run command 'mail'
+
+                                        [client]
+
+-> yum install telnet
+-> telnet "server1 ip" 25
+
+--------------------------------------------------------------------------------------------------------
+9. backup using tar of home directory of users using 'cron jobs'[mon-fri] and backup saved in 3rd hard disk
+
+-> fdisk /dev/nvme0n2p2
+-> mkfs.ext4 /dev/nvme0n2p2
+-> mkdir /backup
+-> mount /dev/nvme0n2p2 /backup
+-> mkdir /backup/home_dir
+-> crontab -e
+
+*/5    *    *    *    1-5       tar -czf /backup/home_dir/h.tar.gz   /home
+
+--------------------------------------------------------------------------------------------------------
+10. ftp(file transfer protocol) server installation and configuration for secure exchange of files over a tcp/ip network
+
+                                        [server]
+
+-> yum install vsftpd
+-> edit /etc/vsftpd/vsftpd.conf
+
+anonymous_enable=NO
+
+ascii_upload_enable=YES
+ascii_download_enable=YES
+
+-> systemctl start vsftpd
+-> systemctl stop firewalld
+-> setenforce 0
+                                        
+                                        [client]
+
+-> yum install ftp
+-> systemctl start ftp
+-> systemctl stop firewalld
+-> setenforce 0
+-> run command 'ftp'
+
+--------------------------------------------------------------------------------------------------------
+11. userquota to give 1 gb of space to every user
+
+-> edit /etc/fstab
+
+/dev/nvme0n2p3     /quota     ext4     defaults,usrquota     0     0
+
+-> mount -o remount /dev/nvme0n2p3
+-> quotacheck -cu /dev/nvme0n2p3
+-> quotacheck -avu
+-> quotaon /quota
+-> edquota username
+-> su - username
+
+--------------------------------------------------------------------------------------------------------
+12. ssh key generate on client for password-less authentication
+
+-> run command 'ssh-keygen'
+-> ssh-copy-id "username@server ip"
+-> ssh "username@server ip"
+
+--------------------------------------------------------------------------------------------------------
+13. dhcp server installation and configuration for static ip allocation
+
+                                           [server]
+
+-> yum install dhcp-server
+-> cp /usr/share/doc/dhcp-server/dhcpd.conf.example /etc/dhcp/dhcpd.conf
+-> edit /etc/dhcp/dhcpd.conf
+
+# A slightly different configuration for an internal subnet.
+subnet 179.240.1.0 netmask 255.255.255.0 {
+  range 179.240.1.1 179.240.1.10;
+  option domain-name-servers 179.240.1.0;
+}
+
+-> nmcli con add con-name ens160 type ethernet ifname ens160 ipv4 addresses 179.240.1.0/24
+-> start dhcp service (systemctl start dhcpd)
+
+--------------------------------------------------------------------------------------------------------
+14. unbound server installation for dns configuration to get non authorative answer
+
+                                            [server1]
+
+-> dns configuration
+
+                                            [server2]
+
+-> yum install unbound
+-> vim /etc/unbound/unbound.conf
+
+interface: 0.0.0.0
+access-control: 0.0.0.0/0 allow
+domain-insecure: "ipl.com"
+
+ forward-zone:
+        name: "."
+        forward-addr: "server1 ip"
+
+-> systemctl start unbound
+-> systemctl stop firewalld
+-> setenforce 0
+
+                                            [client]
+
+-> nslookup www.ipl.com "server2 ip"
+                
+              or
+
+-> nslookup www.ipl.com
+-> edit /etc/resolv.conf
+
+"server2 ip"
