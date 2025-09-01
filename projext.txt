@@ -1,4 +1,4 @@
-                                              [Linux Administration and Networking]
+                                                                   [Linux Administration and Networking]
 
 1. yum configuration for package installation 
 
